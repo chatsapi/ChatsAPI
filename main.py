@@ -1,13 +1,18 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from pydantic import BaseModel
 
 app = FastAPI()
 
 
+class ChatRequest(BaseModel):
+    message: str
+
+
 @app.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "ChatsAPI"}
 
 
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}
+@app.post("/chat")
+async def chat(request: ChatRequest, http_request: Request):
+    return {"message": f"{request.message}"}
