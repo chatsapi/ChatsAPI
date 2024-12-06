@@ -50,7 +50,7 @@ class ChatsAPI:
         self.bm25 = BM25Okapi(self.tokenized_routes)
         self.initialized = True
 
-    async def chat(self, input_text: str, method="hnswlib"):
+    async def run(self, input_text: str, method="hnswlib"):
         """
         Handles chat queries using the specified method: 'hnswlib' or 'bm25_hybrid'.
 
