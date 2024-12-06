@@ -7,9 +7,10 @@ class ChatsAPI:
     """
     ChatsAPI class to handle chat queries using SBERT embeddings and HNSWlib or BM25 search.
     """
+
     def __init__(self):
         self.tokenized_routes = None
-        self.routes = []
+        self.routes = []  # Each route will now include metadata
         self.route_functions = {}
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
         self.embeddings = None
@@ -22,22 +23,66 @@ class ChatsAPI:
         """
         Decorator to register a new route.
         """
+
         def decorator(func):
-            self.routes.append(route)
+            # Register the route
+            route_info = {"route": route, "function": func, "extract_params": []}
+
+            # If the function has deferred extraction metadata, add it
+            if hasattr(func, "_extract_metadata"):
+                route_info["extract_params"].append(func._extract_metadata)
+
+            self.routes.append(route_info)
             self.route_functions[route] = func
             return func
 
         return decorator
 
+    # Add the extract decorator
+    def extract(self, key: str, data_type: type, default_value):
+        """
+        Decorator to add parameter extraction metadata to a route.
+        """
+
+        def decorator(func):
+            # Wrapper to ensure the function is associated with extraction metadata
+            def wrapper(*args, **kwargs):
+                return func(*args, **kwargs)
+
+            # Add extraction metadata AFTER route registration
+            def add_extraction_metadata():
+                for route_info in self.routes:
+                    if route_info["function"] == func:
+                        route_info["extract_params"].append({
+                            "key": key,
+                            "data_type": data_type,
+                            "default": default_value,
+                        })
+                        break
+
+            # Delay the metadata addition until after initialization
+            if self.initialized:
+                add_extraction_metadata()
+            else:
+                # Defer until the route system initializes
+                wrapper._extract_metadata = {
+                    "key": key,
+                    "data_type": data_type,
+                    "default": default_value,
+                }
+
+            return wrapper
+
+        return decorator
+
     # Initialize the system
     def initialize(self):
-
-        # Check if routes have been registered
         if not self.routes:
             raise ValueError("No routes have been registered.")
 
         # Generate embeddings for all items
-        self.embeddings = self.model.encode(self.routes, normalize_embeddings=True)
+        route_texts = [route_info["route"] for route_info in self.routes]
+        self.embeddings = self.model.encode(route_texts, normalize_embeddings=True)
 
         # Initialize HNSWlib index
         dim = self.embeddings.shape[1]
@@ -46,11 +91,11 @@ class ChatsAPI:
         self.hnsw_index.add_items(self.embeddings)
 
         # Initialize BM25
-        self.tokenized_routes = [route.split() for route in self.routes]
+        self.tokenized_routes = [route.split() for route in route_texts]
         self.bm25 = BM25Okapi(self.tokenized_routes)
         self.initialized = True
 
-    async def run(self, input_text: str, method="hnswlib"):
+    async def run(self, input_text: str, method="bm25_hybrid"):
         """
         Handles chat queries using the specified method: 'hnswlib' or 'bm25_hybrid'.
 
@@ -71,6 +116,24 @@ class ChatsAPI:
         else:
             raise ValueError("Invalid method. Choose 'hnswlib' or 'bm25_hybrid'.")
 
+    async def execute_route(self, route_info, input_text):
+        """
+        Execute the matched route's function with extracted parameters.
+        """
+        extracted_params = {}
+        for param in route_info["extract_params"]:
+            key = param["key"]
+            data_type = param["data_type"]
+            default = param["default"]
+
+            # Simulate parameter extraction (example: extracting from input_text)
+            # Here, it simply maps the key to the default for demonstration.
+            # You can add actual NLP or regex-based extraction logic.
+            extracted_params[key] = default
+
+        # Call the function with the chat message and extracted parameters
+        return await route_info["function"](input_text, extracted_params)
+
     async def sbert_hnswlib(self, input_text: str):
         """
         SBERT + HNSWlib method for fast similarity search.
@@ -89,7 +152,8 @@ class ChatsAPI:
         # Define a similarity threshold
         similarity_threshold = 0.5  # Adjust as needed
         if similarity_score >= similarity_threshold:
-            result = await self.route_functions[self.routes[most_similar_idx]]()
+            route_info = self.routes[most_similar_idx]
+            return await self.execute_route(route_info, input_text)
         else:
             result = "No relevant match found."  # Default output
 
@@ -123,7 +187,13 @@ class ChatsAPI:
         # Define a similarity threshold
         similarity_threshold = 0.5  # Adjust as needed
         if max_score >= similarity_threshold:
-            result = await self.route_functions[top_routes[best_match_idx]]()
+
+            print("Input:", input_text)
+            print("BM25 Top Candidates:", top_routes)
+            print("Max Cosine Similarity Score:", max_score)
+
+            route_info = top_routes[best_match_idx]
+            return await self.execute_route(route_info, input_text)
         else:
             result = "No relevant match found."  # Default output
 
