@@ -4,13 +4,39 @@ from rank_bm25 import BM25Okapi
 
 
 class ChatsAPI:
-    def __init__(self, routes: list[str]):
-        self.routes = routes
-
-        # Initialize SBERT model
+    """
+    ChatsAPI class to handle chat queries using SBERT embeddings and HNSWlib or BM25 search.
+    """
+    def __init__(self):
+        self.tokenized_routes = None
+        self.routes = []
+        self.route_functions = {}
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.embeddings = None
+        self.hnsw_index = None
+        self.bm25 = None
+        self.initialized = False
 
-        # Step 1: Precompute embeddings for all items (for SBERT + HNSWlib)
+    # Register a new route
+    def trigger(self, route: str):
+        """
+        Decorator to register a new route.
+        """
+        def decorator(func):
+            self.routes.append(route)
+            self.route_functions[route] = func
+            return func
+
+        return decorator
+
+    # Initialize the system
+    def initialize(self):
+
+        # Check if routes have been registered
+        if not self.routes:
+            raise ValueError("No routes have been registered.")
+
+        # Generate embeddings for all items
         self.embeddings = self.model.encode(self.routes, normalize_embeddings=True)
 
         # Initialize HNSWlib index
@@ -19,11 +45,12 @@ class ChatsAPI:
         self.hnsw_index.init_index(max_elements=len(self.embeddings), ef_construction=100, M=16)
         self.hnsw_index.add_items(self.embeddings)
 
-        # Initialize BM25 (for SBERT + BM25 Hybrid Approach)
+        # Initialize BM25
         self.tokenized_routes = [route.split() for route in self.routes]
         self.bm25 = BM25Okapi(self.tokenized_routes)
+        self.initialized = True
 
-    def chat(self, input_text: str, method="hnswlib"):
+    async def chat(self, input_text: str, method="hnswlib"):
         """
         Handles chat queries using the specified method: 'hnswlib' or 'bm25_hybrid'.
 
@@ -32,14 +59,19 @@ class ChatsAPI:
         :return: The most similar route or a default response
         """
 
+        # Initialize the system if not already done
+        if not self.initialized:
+            self.initialize()
+
+        # Choose the search method
         if method == "hnswlib":
-            return self.sbert_hnswlib(input_text)
+            return await self.sbert_hnswlib(input_text)
         elif method == "bm25_hybrid":
-            return self.sbert_bm25_hybrid(input_text)
+            return await self.sbert_bm25_hybrid(input_text)
         else:
             raise ValueError("Invalid method. Choose 'hnswlib' or 'bm25_hybrid'.")
 
-    def sbert_hnswlib(self, input_text: str):
+    async def sbert_hnswlib(self, input_text: str):
         """
         SBERT + HNSWlib method for fast similarity search.
         """
@@ -57,7 +89,7 @@ class ChatsAPI:
         # Define a similarity threshold
         similarity_threshold = 0.5  # Adjust as needed
         if similarity_score >= similarity_threshold:
-            result = self.routes[most_similar_idx]
+            result = await self.route_functions[self.routes[most_similar_idx]]()
         else:
             result = "No relevant match found."  # Default output
 
@@ -67,7 +99,7 @@ class ChatsAPI:
         print("Result:", result)
         return result
 
-    def sbert_bm25_hybrid(self, input_text: str):
+    async def sbert_bm25_hybrid(self, input_text: str):
         """
         SBERT + BM25 Hybrid method for similarity search.
         """
@@ -91,7 +123,7 @@ class ChatsAPI:
         # Define a similarity threshold
         similarity_threshold = 0.5  # Adjust as needed
         if max_score >= similarity_threshold:
-            result = top_routes[best_match_idx]
+            result = await self.route_functions[top_routes[best_match_idx]]()
         else:
             result = "No relevant match found."  # Default output
 
