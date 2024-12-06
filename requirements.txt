@@ -3,3 +3,5 @@ fastapi~=0.115.6
 pydantic~=2.9.2
 hnswlib~=0.8.0
 rank_bm25~=0.2.1
+spacy
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.5.0/en_core_web_sm-3.5.0.tar.gz

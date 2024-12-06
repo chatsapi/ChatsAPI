@@ -1,6 +1,40 @@
 import hnswlib
 from sentence_transformers import SentenceTransformer, util
 from rank_bm25 import BM25Okapi
+import spacy
+
+
+def safe_cast(value, target_type, default):
+    """
+    Safely casts a value to the given target_type. If the conversion fails,
+    returns the default value.
+
+    :param value: The value to cast.
+    :param target_type: The type to which the value should be cast.
+    :param default: The default value to return if conversion fails.
+    :return: The cast value or the default value.
+    """
+    try:
+        if target_type == int:
+            # Strip non-numeric characters and convert to int
+            sanitized_value = ''.join(filter(str.isdigit, str(value)))
+            return int(sanitized_value) if sanitized_value else default
+        elif target_type == float:
+            # Handle float conversion
+            sanitized_value = ''.join(filter(lambda c: c.isdigit() or c == '.', str(value)))
+            return float(sanitized_value) if sanitized_value else default
+        elif target_type == str:
+            # Ensure value is a string
+            return str(value)
+        elif target_type == bool:
+            # Convert truthy/falsy values to boolean
+            return str(value).strip().lower() in ['true', '1', 'yes', 'y']
+        else:
+            # Attempt generic casting for other types
+            return target_type(value)
+    except (ValueError, TypeError):
+        # Fallback to the default value
+        return default
 
 
 class ChatsAPI:
@@ -16,6 +50,7 @@ class ChatsAPI:
         self.embeddings = None
         self.hnsw_index = None
         self.bm25 = None
+        self.nlp = spacy.load("en_core_web_sm")  # Load SpaCy NLP model
         self.initialized = False
 
     # Register a new route
@@ -120,18 +155,39 @@ class ChatsAPI:
         """
         Execute the matched route's function with extracted parameters.
         """
+        # Parse the input_text using SpaCy
+        doc = self.nlp(input_text)
+
+        # Initialize the extracted parameters dictionary
         extracted_params = {}
+
         for param in route_info["extract_params"]:
             key = param["key"]
             data_type = param["data_type"]
             default = param["default"]
 
-            # Simulate parameter extraction (example: extracting from input_text)
-            # Here, it simply maps the key to the default for demonstration.
-            # You can add actual NLP or regex-based extraction logic.
-            extracted_params[key] = default
+            # Attempt to extract the value from input_text
+            extracted_value = None
 
-        # Call the function with the chat message and extracted parameters
+            # Example logic: Match based on parameter name or key
+            for ent in doc.ents:  # Named entities
+                # if key.lower() in ent.text.lower():  # Check for a match with key
+                extracted_value = ent.text
+                break
+
+            # Use extracted value if found; otherwise, use the default
+            final_value = extracted_value if extracted_value is not None else default
+
+            # Convert the value to the required data type
+            try:
+                final_value = safe_cast(final_value, data_type, default)
+            except ValueError:
+                raise ValueError(f"Could not convert {final_value} to {data_type}")
+
+            # Store the result
+            extracted_params[key] = final_value
+
+        # Call the route's function with the input_text and extracted parameters
         return await route_info["function"](input_text, extracted_params)
 
     async def sbert_hnswlib(self, input_text: str):

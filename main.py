@@ -15,7 +15,7 @@ async def cancel_credit_card(chat_message: str, extracted: dict):
 
 
 @chat.trigger("Need help with account settings.")
-@chat.extract("Account ID", int, None)
+@chat.extract("Account ID", int, 12)
 async def account_help(chat_message: str, extracted: dict):
     print("Message:", chat_message)
     print("Extracted:", extracted)
