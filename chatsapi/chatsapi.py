@@ -1,8 +1,15 @@
+from typing import Dict, List
+
 import hnswlib
+from llama_index.llms.gemini import Gemini
+from llama_index.llms.openai import OpenAI
+from llama_index.llms.llama_api import LlamaAPI
+from llama_index.llms.ollama import Ollama
+from llama_index.core.llms import ChatMessage
 from sentence_transformers import SentenceTransformer, util
 from rank_bm25 import BM25Okapi
 import spacy
-from spacy.tokens import Doc
+import uuid
 
 
 def safe_cast(value, target_type, default):
@@ -43,8 +50,11 @@ class ChatsAPI:
     ChatsAPI class to handle chat queries using SBERT embeddings and HNSWlib or BM25 search.
     """
 
-    def __init__(self):
-        self.llm = None
+    def __init__(self, llm_type=None, llm_model=None, llm_api_key=None):
+        self.llm_agent = None
+        self.llm_type = llm_type
+        self.llm_model = llm_model
+        self.llm_api_key = llm_api_key
         self.tokenized_routes = None
         self.routes = []  # Each route will now include metadata
         self.route_functions = {}
@@ -54,6 +64,7 @@ class ChatsAPI:
         self.bm25 = None
         self.initialized = False
         self.nlp = spacy.load("en_core_web_sm")
+        self.conversations: Dict[str, List[ChatMessage]] = {}
 
     # Register a new route
     def trigger(self, route: str):
@@ -191,7 +202,8 @@ class ChatsAPI:
             for param in param_group:
                 # Ensure each param is a tuple with three elements
                 if not (isinstance(param, tuple) and len(param) == 4):
-                    raise ValueError(f"Expected param to be a tuple of (name, key, data_type, default), got {type(param)}")
+                    raise ValueError(
+                        f"Expected param to be a tuple of (name, key, data_type, default), got {type(param)}")
 
                 name, key, data_type, default = param
 
@@ -234,7 +246,7 @@ class ChatsAPI:
             route_info = choices[most_similar_idx]
             return await self.execute_route(route_info, input_text)
         else:
-            result = "No relevant match found."  # Default output
+            result = None  # Default output
 
         # Output the result
         print("Input:", input_text)
@@ -273,9 +285,105 @@ class ChatsAPI:
             route_info = top_routes[best_match_idx]
             return await self.execute_route(route_info, input_text)
         else:
-            result = "No relevant match found."  # Default output
+            result = None  # Default output
 
         # Output the result
         # print("BM25 Top Candidates:", top_routes)
         print("Max Cosine Similarity Score:", max_score)
         return result
+
+    """
+    Conversation AI
+    """
+
+    def _initialize_llm(self, llm_type):
+        """
+        Initialize the Language Model based on the specified type.
+        """
+        llm_classes = {
+            "gemini": Gemini,
+            "openai": OpenAI,
+            "llama_api": LlamaAPI,
+            "ollama": Ollama,
+        }
+        if llm_type in llm_classes:
+            return llm_classes[llm_type](model=self.llm_model, api_key=self.llm_api_key)
+        raise ValueError(f"Unsupported LLM type: {llm_type}")
+
+    async def query(self, input_text: str):
+        if self.llm_agent is None:
+            self.llm_agent = self._initialize_llm(self.llm_type)
+
+        user_message = ChatMessage(
+            role="user",
+            content=(
+                f"""Message: {input_text}"""
+            )
+        )
+
+        local_run = await self.run(input_text)
+
+        if local_run is not None:
+            return local_run
+
+        # Generate a response from Gemini
+        resp = self.llm_agent.chat([user_message])
+
+        return {
+            "role": resp.message.role,
+            "message": resp.message.content,
+        }
+
+    async def conversation(self, input_text: str, session_id: str):
+        if not session_id:
+            return {"error": "Session ID not found. Please start a new session using /set-session"}
+
+        # Initialize session conversation if not exists
+        if session_id not in self.conversations:
+            self.conversations[session_id] = []
+
+        user_message = ChatMessage(
+            role="user",
+            content=(
+                f"""Message: {input_text}"""
+            )
+        )
+
+        self.conversations[session_id].append(user_message)
+
+        local_run = await self.run(input_text)
+
+        if local_run is not None:
+            return local_run
+
+        # Generate a response from Gemini
+        resp = self.llm_agent.chat(self.conversations[session_id])
+
+        # Add AI's response to the conversation
+        ai_message = ChatMessage(role=resp.message.role, content=resp.message.content)
+        self.conversations[session_id].append(ai_message)
+
+        return {
+            "role": resp.message.role,
+            "message": resp.message.content,
+        }
+
+    def set_session(self):
+        self.llm_agent = self._initialize_llm(self.llm_type)
+
+        session_id = str(uuid.uuid4())  # Generate a unique session ID
+        self.conversations[session_id] = []  # Initialize conversation for the session
+
+        # Add a system message to instruct the LLM to give short responses
+        instruction_message = ChatMessage(
+            role="system",
+            content="Please keep your responses short and concise and to the point."
+        )
+        self.conversations[session_id].append(instruction_message)
+        return session_id
+
+    def end_session(self, session_id):
+        if session_id in self.conversations:
+            del self.conversations[session_id]
+            return {"message": "Session reset"}
+        return {"message": "Session not found"}

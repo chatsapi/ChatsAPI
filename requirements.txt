@@ -5,5 +5,6 @@ hnswlib~=0.8.0
 rank_bm25~=0.2.1
 llama-index
 llama-index-llms-gemini
-spacy
+spacy~=3.8.2
 spacy-transformers
+python-dotenv~=1.0.1
