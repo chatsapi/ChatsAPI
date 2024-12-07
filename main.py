@@ -7,7 +7,7 @@ chat = ChatsAPI()
 
 
 @chat.trigger("Want to cancel a credit card.")
-@chat.extract("Credit card number", str, None)
+@chat.extract([("Credit card number", str, None)])
 async def cancel_credit_card(chat_message: str, extracted: dict):
     print("Message:", chat_message)
     print("Extracted:", extracted)
@@ -15,7 +15,7 @@ async def cancel_credit_card(chat_message: str, extracted: dict):
 
 
 @chat.trigger("Need help with account settings.")
-@chat.extract("Account ID", int, 12)
+@chat.extract([("Account ID", int, 12), ("Account type", str, "Savings")])
 async def account_help(chat_message: str, extracted: dict):
     print("Message:", chat_message)
     print("Extracted:", extracted)

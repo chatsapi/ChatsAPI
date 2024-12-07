@@ -1,8 +1,8 @@
 import hnswlib
 from sentence_transformers import SentenceTransformer, util
 from rank_bm25 import BM25Okapi
-import spacy
-
+from transformers import RobertaTokenizer, RobertaForTokenClassification
+import torch
 
 def safe_cast(value, target_type, default):
     """
@@ -42,7 +42,7 @@ class ChatsAPI:
     ChatsAPI class to handle chat queries using SBERT embeddings and HNSWlib or BM25 search.
     """
 
-    def __init__(self):
+    def __init__(self, extraction_model_path="dbmdz/bert-large-cased-finetuned-conll03-english"):
         self.tokenized_routes = None
         self.routes = []  # Each route will now include metadata
         self.route_functions = {}
@@ -50,8 +50,9 @@ class ChatsAPI:
         self.embeddings = None
         self.hnsw_index = None
         self.bm25 = None
-        self.nlp = spacy.load("en_core_web_sm")  # Load SpaCy NLP model
         self.initialized = False
+        self.tokenizer = RobertaTokenizer.from_pretrained(extraction_model_path)
+        self.extraction_model = RobertaForTokenClassification.from_pretrained(extraction_model_path)
 
     # Register a new route
     def trigger(self, route: str):
@@ -74,9 +75,10 @@ class ChatsAPI:
         return decorator
 
     # Add the extract decorator
-    def extract(self, key: str, data_type: type, default_value):
+    def extract(self, params: list):
         """
-        Decorator to add parameter extraction metadata to a route.
+        Decorator to add multiple parameter extraction metadata to a route.
+        :param params: A list of tuples, where each tuple is (key, data_type, default_value)
         """
 
         def decorator(func):
@@ -88,11 +90,20 @@ class ChatsAPI:
             def add_extraction_metadata():
                 for route_info in self.routes:
                     if route_info["function"] == func:
-                        route_info["extract_params"].append({
-                            "key": key,
-                            "data_type": data_type,
-                            "default": default_value,
-                        })
+                        # Append each parameter as a dictionary
+                        for param in params:
+                            # Ensure param is a tuple of (key, data_type, default_value)
+                            if isinstance(param, tuple) and len(param) == 3:
+                                key, data_type, default_value = param
+                                route_info["extract_params"].append({
+                                    "key": key,
+                                    "data_type": data_type,
+                                    "default": default_value,
+                                })
+                            else:
+                                raise ValueError(
+                                    f"Each parameter must be a tuple of (key, data_type, default_value). Got: {param}"
+                                )
                         break
 
             # Delay the metadata addition until after initialization
@@ -100,11 +111,7 @@ class ChatsAPI:
                 add_extraction_metadata()
             else:
                 # Defer until the route system initializes
-                wrapper._extract_metadata = {
-                    "key": key,
-                    "data_type": data_type,
-                    "default": default_value,
-                }
+                wrapper._extract_metadata = params
 
             return wrapper
 
@@ -151,41 +158,63 @@ class ChatsAPI:
         else:
             raise ValueError("Invalid method. Choose 'hnswlib' or 'bm25_hybrid'.")
 
+    def extract_value_for_key(self, input_text, key):
+        """
+        Extracts the value associated with the provided key from the input text.
+
+        :param input_text: The text from which to extract the value.
+        :param key: The key whose associated value needs to be extracted (e.g., "account_id").
+        :return: The extracted value for the key or a default value if not found.
+        """
+        # Extract entities from the input text
+        extracted_entities = self.extract_entities(input_text)
+
+        # If the key exists in the extracted entities, return its value
+        if key in extracted_entities:
+            return extracted_entities[key]
+        else:
+            return None  # Or return a default value, like "Not found"
+
     async def execute_route(self, route_info, input_text):
         """
         Execute the matched route's function with extracted parameters.
         """
-        # Parse the input_text using SpaCy
-        doc = self.nlp(input_text)
+        # Extract entities using RoBERTa
+        extracted_entities = self.extract_entities(input_text)
 
         # Initialize the extracted parameters dictionary
         extracted_params = {}
 
-        for param in route_info["extract_params"]:
-            key = param["key"]
-            data_type = param["data_type"]
-            default = param["default"]
+        # Ensure extract_params is a list of parameter groups
+        if not isinstance(route_info["extract_params"], list):
+            raise ValueError(f"Expected 'extract_params' to be a list, got {type(route_info['extract_params'])}")
 
-            # Attempt to extract the value from input_text
-            extracted_value = None
+        # Iterate through the list of parameter groups
+        for param_group in route_info["extract_params"]:
+            if not isinstance(param_group, list):
+                raise ValueError(f"Expected param_group to be a list of tuples, got {type(param_group)}")
 
-            # Example logic: Match based on parameter name or key
-            for ent in doc.ents:  # Named entities
-                # if key.lower() in ent.text.lower():  # Check for a match with key
-                extracted_value = ent.text
-                break
+            for param in param_group:
+                # Ensure each param is a tuple with three elements
+                if not (isinstance(param, tuple) and len(param) == 3):
+                    raise ValueError(f"Expected param to be a tuple of (key, data_type, default), got {type(param)}")
 
-            # Use extracted value if found; otherwise, use the default
-            final_value = extracted_value if extracted_value is not None else default
+                key, data_type, default = param
 
-            # Convert the value to the required data type
-            try:
-                final_value = safe_cast(final_value, data_type, default)
-            except ValueError:
-                raise ValueError(f"Could not convert {final_value} to {data_type}")
+                # Check if the entity is extracted
+                extracted_value = self.extract_value_for_key(input_text, key)
 
-            # Store the result
-            extracted_params[key] = final_value
+                # Use the extracted value if found; otherwise, use the default
+                final_value = extracted_value if extracted_value is not None else default
+
+                # Convert the value to the required data type
+                try:
+                    final_value = safe_cast(final_value, data_type, default)
+                except ValueError:
+                    raise ValueError(f"Could not convert {final_value} to {data_type}")
+
+                # Store the result
+                extracted_params[key] = final_value
 
         # Call the route's function with the input_text and extracted parameters
         return await route_info["function"](input_text, extracted_params)
@@ -244,8 +273,7 @@ class ChatsAPI:
         similarity_threshold = 0.5  # Adjust as needed
         if max_score >= similarity_threshold:
 
-            print("Input:", input_text)
-            print("BM25 Top Candidates:", top_routes)
+            # print("BM25 Top Candidates:", top_routes)
             print("Max Cosine Similarity Score:", max_score)
 
             route_info = top_routes[best_match_idx]
@@ -254,8 +282,6 @@ class ChatsAPI:
             result = "No relevant match found."  # Default output
 
         # Output the result
-        print("Input:", input_text)
-        print("BM25 Top Candidates:", top_routes)
+        # print("BM25 Top Candidates:", top_routes)
         print("Max Cosine Similarity Score:", max_score)
-        print("Result:", result)
         return result
