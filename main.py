@@ -9,13 +9,16 @@ chat = ChatsAPI()
 
 
 @chat.trigger("Want to cancel a credit card.")
-@chat.extract([("Credit card number", str, None)])
+@chat.extract([("card_number", "Credit card number (a 12 digit number)", str, None)])
 async def cancel_credit_card(chat_message: str, extracted: dict):
     return {"message": chat_message, "extracted": extracted}
 
 
 @chat.trigger("Need help with account settings.")
-@chat.extract([("account_number", "Account number (a 9 nine digit number)", int, None), ("holder_name", "Account holder's name (a person name)", str, None)])
+@chat.extract([
+    ("account_number", "Account number (a nine digit number)", int, None),
+    ("holder_name", "Account holder's name (a person name)", str, None)
+])
 async def account_help(chat_message: str, extracted: dict):
     return {"message": chat_message, "extracted": extracted}
 
