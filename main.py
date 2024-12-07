@@ -1,9 +1,11 @@
+import os
+
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from chatsapi.chatsapi import ChatsAPI
 
 app = FastAPI()
-chat = ChatsAPI()
+chat = ChatsAPI(llm=os.getenv("GOOGLE_API_KEY"))
 
 
 @chat.trigger("Want to cancel a credit card.")

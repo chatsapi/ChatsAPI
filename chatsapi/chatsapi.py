@@ -1,8 +1,7 @@
 import hnswlib
 from sentence_transformers import SentenceTransformer, util
 from rank_bm25 import BM25Okapi
-from transformers import RobertaTokenizer, RobertaForTokenClassification
-import torch
+import re
 
 def safe_cast(value, target_type, default):
     """
@@ -42,7 +41,8 @@ class ChatsAPI:
     ChatsAPI class to handle chat queries using SBERT embeddings and HNSWlib or BM25 search.
     """
 
-    def __init__(self, extraction_model_path="dbmdz/bert-large-cased-finetuned-conll03-english"):
+    def __init__(self):
+        self.llm = None
         self.tokenized_routes = None
         self.routes = []  # Each route will now include metadata
         self.route_functions = {}
@@ -51,8 +51,6 @@ class ChatsAPI:
         self.hnsw_index = None
         self.bm25 = None
         self.initialized = False
-        self.tokenizer = RobertaTokenizer.from_pretrained(extraction_model_path)
-        self.extraction_model = RobertaForTokenClassification.from_pretrained(extraction_model_path)
 
     # Register a new route
     def trigger(self, route: str):
@@ -160,28 +158,26 @@ class ChatsAPI:
 
     def extract_value_for_key(self, input_text, key):
         """
-        Extracts the value associated with the provided key from the input text.
+        Extracts the value corresponding to a given key from the text using SBERT for semantic understanding.
 
-        :param input_text: The text from which to extract the value.
-        :param key: The key whose associated value needs to be extracted (e.g., "account_id").
-        :return: The extracted value for the key or a default value if not found.
+        Args:
+            key (str): The key to search for (e.g., "account number").
+            text (str): The input text to analyze.
+            value_pattern (str): A regex pattern to extract the value (default is any non-whitespace string).
+
+        Returns:
+            dict: Contains the most relevant sentence and extracted value.
         """
-        # Extract entities from the input text
-        extracted_entities = self.extract_entities(input_text)
 
-        # If the key exists in the extracted entities, return its value
-        if key in extracted_entities:
-            return extracted_entities[key]
-        else:
-            return None  # Or return a default value, like "Not found"
+
+
+        print(key, most_relevant_sentence, extracted_value)
+        return None  # Or return a default value, like "Not found"
 
     async def execute_route(self, route_info, input_text):
         """
         Execute the matched route's function with extracted parameters.
         """
-        # Extract entities using RoBERTa
-        extracted_entities = self.extract_entities(input_text)
-
         # Initialize the extracted parameters dictionary
         extracted_params = {}
 
