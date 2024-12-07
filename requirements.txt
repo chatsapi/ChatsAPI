@@ -7,7 +7,3 @@ llama-index-llms-openai
 llama-index-llms-gemini
 llama-index-llms-llama-api
 llama-index-llms-ollama
-
-fastapi~=0.115.6
-python-dotenv~=1.0.1
-pydantic
