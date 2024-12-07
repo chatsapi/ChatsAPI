@@ -5,23 +5,19 @@ from pydantic import BaseModel
 from chatsapi.chatsapi import ChatsAPI
 
 app = FastAPI()
-chat = ChatsAPI(llm=os.getenv("GOOGLE_API_KEY"))
+chat = ChatsAPI()
 
 
 @chat.trigger("Want to cancel a credit card.")
 @chat.extract([("Credit card number", str, None)])
 async def cancel_credit_card(chat_message: str, extracted: dict):
-    print("Message:", chat_message)
-    print("Extracted:", extracted)
-    return f"Credit card cancellation process initiated."
+    return {"message": chat_message, "extracted": extracted}
 
 
 @chat.trigger("Need help with account settings.")
-@chat.extract([("Account ID", int, 12), ("Account type", str, "Savings")])
+@chat.extract([("account_number", "Account number (a 9 nine digit number)", int, None), ("holder_name", "Account holder's name (a person name)", str, None)])
 async def account_help(chat_message: str, extracted: dict):
-    print("Message:", chat_message)
-    print("Extracted:", extracted)
-    return "Account help process initiated."
+    return {"message": chat_message, "extracted": extracted}
 
 
 class RequestModel(BaseModel):

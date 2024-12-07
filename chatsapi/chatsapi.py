@@ -1,7 +1,9 @@
 import hnswlib
 from sentence_transformers import SentenceTransformer, util
 from rank_bm25 import BM25Okapi
-import re
+import spacy
+from spacy.tokens import Doc
+
 
 def safe_cast(value, target_type, default):
     """
@@ -51,6 +53,7 @@ class ChatsAPI:
         self.hnsw_index = None
         self.bm25 = None
         self.initialized = False
+        self.nlp = spacy.load("en_core_web_sm")
 
     # Register a new route
     def trigger(self, route: str):
@@ -150,29 +153,24 @@ class ChatsAPI:
 
         # Choose the search method
         if method == "hnswlib":
-            return await self.sbert_hnswlib(input_text)
+            return await self.sbert_hnswlib(input_text, self.routes)
         elif method == "bm25_hybrid":
-            return await self.sbert_bm25_hybrid(input_text)
+            return await self.sbert_bm25_hybrid(input_text, self.routes)
         else:
             raise ValueError("Invalid method. Choose 'hnswlib' or 'bm25_hybrid'.")
 
-    def extract_value_for_key(self, input_text, key):
-        """
-        Extracts the value corresponding to a given key from the text using SBERT for semantic understanding.
+    async def extract_value_for_key(self, input_text, key):
+        doc = self.nlp(input_text)
+        best_match = None
+        max_similarity = 0
 
-        Args:
-            key (str): The key to search for (e.g., "account number").
-            text (str): The input text to analyze.
-            value_pattern (str): A regex pattern to extract the value (default is any non-whitespace string).
+        for ent in doc.ents:
+            similarity = ent.similarity(self.nlp(key))
+            if similarity > max_similarity:
+                best_match = ent.text
+                max_similarity = similarity
 
-        Returns:
-            dict: Contains the most relevant sentence and extracted value.
-        """
-
-
-
-        print(key, most_relevant_sentence, extracted_value)
-        return None  # Or return a default value, like "Not found"
+        return best_match
 
     async def execute_route(self, route_info, input_text):
         """
@@ -192,13 +190,13 @@ class ChatsAPI:
 
             for param in param_group:
                 # Ensure each param is a tuple with three elements
-                if not (isinstance(param, tuple) and len(param) == 3):
-                    raise ValueError(f"Expected param to be a tuple of (key, data_type, default), got {type(param)}")
+                if not (isinstance(param, tuple) and len(param) == 4):
+                    raise ValueError(f"Expected param to be a tuple of (name, key, data_type, default), got {type(param)}")
 
-                key, data_type, default = param
+                name, key, data_type, default = param
 
                 # Check if the entity is extracted
-                extracted_value = self.extract_value_for_key(input_text, key)
+                extracted_value = await self.extract_value_for_key(input_text, key)
 
                 # Use the extracted value if found; otherwise, use the default
                 final_value = extracted_value if extracted_value is not None else default
@@ -210,12 +208,12 @@ class ChatsAPI:
                     raise ValueError(f"Could not convert {final_value} to {data_type}")
 
                 # Store the result
-                extracted_params[key] = final_value
+                extracted_params[name] = final_value
 
         # Call the route's function with the input_text and extracted parameters
         return await route_info["function"](input_text, extracted_params)
 
-    async def sbert_hnswlib(self, input_text: str):
+    async def sbert_hnswlib(self, input_text: str, choices):
         """
         SBERT + HNSWlib method for fast similarity search.
         """
@@ -233,7 +231,7 @@ class ChatsAPI:
         # Define a similarity threshold
         similarity_threshold = 0.5  # Adjust as needed
         if similarity_score >= similarity_threshold:
-            route_info = self.routes[most_similar_idx]
+            route_info = choices[most_similar_idx]
             return await self.execute_route(route_info, input_text)
         else:
             result = "No relevant match found."  # Default output
@@ -244,7 +242,7 @@ class ChatsAPI:
         print("Result:", result)
         return result
 
-    async def sbert_bm25_hybrid(self, input_text: str):
+    async def sbert_bm25_hybrid(self, input_text: str, choices):
         """
         SBERT + BM25 Hybrid method for similarity search.
         """
@@ -254,7 +252,7 @@ class ChatsAPI:
 
         # Get top-k BM25 candidates
         top_k_idx = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)[:3]
-        top_routes = [self.routes[i] for i in top_k_idx]
+        top_routes = [choices[i] for i in top_k_idx]
         top_embeddings = [self.embeddings[i] for i in top_k_idx]
 
         # Step 2: Use SBERT to refine BM25 candidates

@@ -3,3 +3,7 @@ fastapi~=0.115.6
 pydantic~=2.9.2
 hnswlib~=0.8.0
 rank_bm25~=0.2.1
+llama-index
+llama-index-llms-gemini
+spacy
+spacy-transformers
