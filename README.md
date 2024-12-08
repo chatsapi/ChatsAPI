@@ -4,7 +4,6 @@
   
   [![PyPI version](https://badge.fury.io/py/chatsapi.svg)](https://badge.fury.io/py/chatsapi)
   [![CI Build](https://github.com/chatsapi/ChatsAPI/actions/workflows/publish.yml/badge.svg)](https://github.com/chatsapi/ChatsAPI/actions/workflows/publish.yml)
-  [![Coverage Status](https://coveralls.io/repos/github/chatsapi/ChatsAPI/badge.svg?branch=main)](https://coveralls.io/github/chatsapi/ChatsAPI?branch=main)
   [![Python Versions](https://img.shields.io/pypi/pyversions/chatsapi.svg)](https://pypi.org/project/chatsapi/)
   [![License](https://img.shields.io/github/license/chatsapi/ChatsAPI)](https://github.com/chatsapi/ChatsAPI/blob/main/LICENSE)
 
