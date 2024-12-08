@@ -1,10 +1,19 @@
-# ChatsAPI
+![ChatsAPI-Banner.png](docs_src%2Fimages%2FChatsAPI-Banner.png)
 
-**The World's Fastest AI Agent Framework.**  
+<div align="center">
+  
+  [![PyPI version](https://badge.fury.io/py/chatsapi.svg)](https://badge.fury.io/py/chatsapi)
+  [![CI Build](https://github.com/chatsapi/ChatsAPI/actions/workflows/publish.yml/badge.svg)](https://github.com/chatsapi/ChatsAPI/actions/workflows/publish.yml)
+  [![Coverage Status](https://coveralls.io/repos/github/chatsapi/ChatsAPI/badge.svg?branch=main)](https://coveralls.io/github/chatsapi/ChatsAPI?branch=main)
+  [![Python Versions](https://img.shields.io/pypi/pyversions/chatsapi.svg)](https://pypi.org/project/chatsapi/)
+  [![License](https://img.shields.io/github/license/chatsapi/ChatsAPI)](https://github.com/chatsapi/ChatsAPI/blob/main/LICENSE)
+
+</div>
+
+
+**ChatsAPI - The World's Fastest AI Agent Framework.**  
 Based on **SBERT** and **SpaCy Transforms**, ChatsAPI is designed to enable seamless natural language processing for AI-powered conversational agents. With hybrid search capabilities and an extensible architecture, ChatsAPI offers blazing-fast performance and intuitive route management.
 
-
-![ChatsAPI-Banner.png](docs_src%2Fimages%2FChatsAPI-Banner.png)
 
 
 ## Features
