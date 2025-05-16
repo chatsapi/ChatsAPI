@@ -11,7 +11,7 @@
 
 
 
-## **ChatsAPI - The World's Fastest AI Agent Framework.**
+## **ChatsAPI - A High-Performance AI Agent Framework based on SBERT & SpaCy.**
 Based on **SBERT** and **SpaCy Transforms**, ChatsAPI is designed to enable seamless natural language processing for AI-powered conversational agents. With hybrid search capabilities and an extensible architecture, ChatsAPI offers blazing-fast performance and intuitive route management.
 
 
